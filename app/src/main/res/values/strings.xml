@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">AwakeLog</string>
+
+    <string name="hello_world">Hello world!</string>
+    <string name="action_settings">Settings</string>
+    <string name="checkbox_screen_on">Keep Screen On</string>
+    <string name="checkbox_wakelock">Keep CPU Running</string>
+    <string name="checkbox_battery_log">Log Battery Use</string>
+    <string name="preference_file_key">AwakeLogSharedPref</string>
+    <string name="init_datetime_key">InitialTime</string>
+    <string name="init_battery_key">InitialBatteryLevel</string>
+    <string name="prev_datetime_key">PrevTime</string>
+    <string name="prev_battery_key">PrevBattery</string>
+
+</resources>
