@@ -9,6 +9,7 @@ import android.os.BatteryManager;
 import android.os.PowerManager;
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
+import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -49,6 +50,10 @@ public class MainActivity extends ActionBarActivity {
                 e.putInt(getString(R.string.init_battery_key), level);
             }
 
+            if (level > 0) {
+                e.putLong(getString(R.string.time_log_key) + ":" + Integer.toString(level), time);
+            }
+
             e.putLong(getString(R.string.prev_datetime_key), time);
             e.putInt(getString(R.string.prev_battery_key), level);
             e.apply();
@@ -68,6 +73,8 @@ public class MainActivity extends ActionBarActivity {
         IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
 //        Intent batteryStatus = getApplicationContext().registerReceiver(null, ifilter);
         registerReceiver(mbcr, ifilter);
+        TextView t = (TextView)findViewById(R.id.textViewHist);
+        t.setMovementMethod(new ScrollingMovementMethod());
     }
 
     public void onDestroy() {
@@ -112,8 +119,25 @@ public class MainActivity extends ActionBarActivity {
         tv2.setText("Short Term Trajectory: " + Integer.toString(prevLevel) + " to " +
                 Integer.toString(currLevel) + " in " + Long.toString(prevTimeDiffSec) + "s, slope: " +
                 Double.toString(shortTermSlope) + "%/hr");
+        updateBatteryList();
 
         return prevTime != -1;
+    }
+
+    private void updateBatteryList() {
+        SharedPreferences sharedPref = this.getSharedPreferences(
+                getString(R.string.preference_file_key), Context.MODE_PRIVATE);
+        TextView t = (TextView)findViewById(R.id.textViewHist);
+        String complete = "Battery History\n";
+        long initTime = sharedPref.getLong(getString(R.string.init_datetime_key), -1);
+        for (int i = 100; i > 0; i--) {
+            long time = sharedPref.getLong(getString(R.string.time_log_key) + ":" + Integer.toString(i), -1);
+            long initTimeDiffSec = (time - initTime)/1000;
+            if (time != -1) {
+                complete += Integer.toString(i) + "%: " + Long.toString(initTimeDiffSec) + "s\n";
+            }
+        }
+        t.setText(complete);
     }
 
     @Override

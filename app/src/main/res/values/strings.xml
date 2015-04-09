@@ -11,5 +11,6 @@
     <string name="init_battery_key">InitialBatteryLevel</string>
     <string name="prev_datetime_key">PrevTime</string>
     <string name="prev_battery_key">PrevBattery</string>
+    <string name="time_log_key">TimeLog</string>
 
 </resources>

@@ -61,6 +61,14 @@
             android:text="Long Term Battery Info"
             android:id="@+id/textView3"
             android:layout_marginLeft="30dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Battery History"
+            android:id="@+id/textViewHist"
+            android:maxLines="10"
+            android:scrollbars="vertical"/>
     </LinearLayout>
 
 </RelativeLayout>
