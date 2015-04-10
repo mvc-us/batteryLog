@@ -61,6 +61,14 @@ public class MainActivity extends ActionBarActivity {
         }
     };
 
+    public double getBatteryLevel() {
+        IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        Intent batteryStatus = registerReceiver(null, ifilter);
+        int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+        int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+        return ((double) level) / ((double) scale);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -177,6 +185,17 @@ public class MainActivity extends ActionBarActivity {
         switch(view.getId()) {
             case R.id.button:
                 updateBatteryScreen();
+                break;
+            case R.id.button2:
+                //TLS Test
+                Log.d("TLS Test", "starting");
+                new TLSTestTask(getBatteryLevel(), this).execute();
+                break;
+            case R.id.button3:
+                //HTTP Test
+                Log.d("HTTP Test", "starting");
+                new HTTPTestTask(getBatteryLevel(), this).execute();
+                break;
         }
     }
 }
