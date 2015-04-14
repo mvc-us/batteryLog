@@ -1,14 +1,20 @@
 package com.michaelchen.awakelog;
 
+import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.os.BatteryManager;
+import android.os.Environment;
 import android.os.PowerManager;
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
+import android.text.Editable;
 import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
 import android.view.Menu;
@@ -16,9 +22,16 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Map;
 
@@ -27,6 +40,13 @@ public class MainActivity extends ActionBarActivity {
 
     private PowerManager.WakeLock pWakeLock;
     private int lastBatteryLevel;
+
+    public static final String EXTERN_FILE_NAME = "powerUsage.log";
+    private File file;
+    private boolean writeToLog = false;
+    public static final String ALERT_TITLE = "Identifier in Log";
+    public static final String LOG_DIVIDER = ">>>>>>>>>>";
+    public static final String ALERT_MESSAGE = "Used to divide between logs in file";
 
     private BroadcastReceiver mbcr = new BroadcastReceiver()
     {
@@ -37,7 +57,8 @@ public class MainActivity extends ActionBarActivity {
             //after getting update from broadcast receiver
             //it will change and give battery status
             int level = i.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-            long time = new Date().getTime();
+            Date d = new Date();
+            long time = d.getTime();
             MainActivity.this.updateBatteryLevel(level);
 //            ProgressBar pb=(ProgressBar)findViewById(R.id.progressBar1);
 
@@ -52,6 +73,12 @@ public class MainActivity extends ActionBarActivity {
 
             if (level > 0) {
                 e.putLong(getString(R.string.time_log_key) + ":" + Integer.toString(level), time);
+                DateFormat df = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss");
+                String dateAsString = df.format(d);
+                String write = dateAsString + "," + Long.toString(time) + "," + Integer.toString(level);
+                if (MainActivity.this.writeToLog) {
+                    MainActivity.this.appendStorage(write);
+                }
             }
 
             e.putLong(getString(R.string.prev_datetime_key), time);
@@ -75,6 +102,14 @@ public class MainActivity extends ActionBarActivity {
         registerReceiver(mbcr, ifilter);
         TextView t = (TextView)findViewById(R.id.textViewHist);
         t.setMovementMethod(new ScrollingMovementMethod());
+        file = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), EXTERN_FILE_NAME);
+        if (!file.exists()) {
+            try {
+                file.createNewFile();
+            } catch (IOException e) {
+                Log.d("File IO", "failed to make file");
+            }
+        }
     }
 
     public void onDestroy() {
@@ -102,7 +137,7 @@ public class MainActivity extends ActionBarActivity {
         TextView tv3=(TextView)findViewById(R.id.textView3);
         long initTimeDiffSec = (time - initTime)/1000;
         initTimeDiffSec = initTimeDiffSec > 0 ? initTimeDiffSec : 1; //to deal with divide by zero error, but screen might be inaccurate then
-        double longTermSlope = ((double) currLevel - initLevel)/(3600*initTimeDiffSec); // percent/hr
+        double longTermSlope = ((double) 3600*(currLevel - initLevel))/(initTimeDiffSec); // percent/hr
         tv3.setText("Long Term Trajectory: " + Integer.toString(initLevel)+" to "+
                 Integer.toString(currLevel) + " in " + Long.toString(initTimeDiffSec) + "s, slope: " +
                 Double.toString(longTermSlope) + "%/hr");
@@ -114,7 +149,7 @@ public class MainActivity extends ActionBarActivity {
         TextView tv2 = (TextView) findViewById(R.id.textView2);
         long prevTimeDiffSec = (time - prevTime) / 1000;
         prevTimeDiffSec = prevTimeDiffSec > 0 ? prevTimeDiffSec : 1; //to deal with divide by zero error, but screen might be inaccurate then
-        double shortTermSlope = ((double) currLevel - prevLevel)/(3600*prevTimeDiffSec); // percent/hr
+        double shortTermSlope = ((double) 3600*(currLevel - prevLevel))/(prevTimeDiffSec); // percent/hr
         
         tv2.setText("Short Term Trajectory: " + Integer.toString(prevLevel) + " to " +
                 Integer.toString(currLevel) + " in " + Long.toString(prevTimeDiffSec) + "s, slope: " +
@@ -124,10 +159,9 @@ public class MainActivity extends ActionBarActivity {
         return prevTime != -1;
     }
 
-    private void updateBatteryList() {
+    private String batteryHistory() {
         SharedPreferences sharedPref = this.getSharedPreferences(
                 getString(R.string.preference_file_key), Context.MODE_PRIVATE);
-        TextView t = (TextView)findViewById(R.id.textViewHist);
         String complete = "Battery History\n";
         long initTime = sharedPref.getLong(getString(R.string.init_datetime_key), -1);
         for (int i = 100; i > 0; i--) {
@@ -137,7 +171,21 @@ public class MainActivity extends ActionBarActivity {
                 complete += Integer.toString(i) + "%: " + Long.toString(initTimeDiffSec) + "s\n";
             }
         }
-        t.setText(complete);
+        return complete;
+    }
+
+    private void updateBatteryList() {
+        TextView t = (TextView)findViewById(R.id.textViewHist);
+        t.setText(batteryHistory());
+        t.setTextIsSelectable(true);
+        t.setKeyListener(null);
+        t.setFocusable(true);
+    }
+
+    public void copyHistory(View view) {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        ClipData clip = ClipData.newPlainText("Battery History", batteryHistory());
+        clipboard.setPrimaryClip(clip);
     }
 
     @Override
@@ -189,11 +237,32 @@ public class MainActivity extends ActionBarActivity {
                     SharedPreferences sharedPref = getApplicationContext().getSharedPreferences(
                             getString(R.string.preference_file_key), Context.MODE_PRIVATE);
                     sharedPref.edit().clear().commit();
+                    writeToLog = false;
                 } else {
                     updateBatteryScreen();
+                    startLog();
                 }
                 break;
         }
+    }
+
+    private void startLog() {
+        final EditText input = new EditText(this);
+        new AlertDialog.Builder(MainActivity.this)
+                .setTitle(ALERT_TITLE)
+                .setMessage(ALERT_MESSAGE)
+                .setView(input)
+                .setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        Editable value = input.getText();
+                        MainActivity.this.appendStorage(MainActivity.LOG_DIVIDER + " " + value.toString());
+                        writeToLog = true;
+                    }
+                }).setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int whichButton) {
+                // Nothing
+            }
+        }).show();
     }
 
     public void onButtonClicked(View view) {
@@ -201,6 +270,18 @@ public class MainActivity extends ActionBarActivity {
         switch(view.getId()) {
             case R.id.button:
                 updateBatteryScreen();
+        }
+    }
+
+    protected void appendStorage(String s) {
+        String text = s;
+        try {
+            BufferedWriter buf = new BufferedWriter(new FileWriter(file, true));
+            buf.append(text);
+            buf.newLine();
+            buf.close();
+        } catch (IOException e) {
+            Log.d("File IO", "failed to append to log file");
         }
     }
 }

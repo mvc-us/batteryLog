@@ -62,13 +62,21 @@
             android:id="@+id/textView3"
             android:layout_marginLeft="30dp" />
 
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Copy Battery History"
+            android:id="@+id/button_copy"
+            android:onClick="copyHistory"/>
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Battery History"
             android:id="@+id/textViewHist"
-            android:maxLines="10"
-            android:scrollbars="vertical"/>
+            android:maxLines="30"
+            android:scrollbars="vertical"
+            android:textIsSelectable="true"/>
     </LinearLayout>
 
 </RelativeLayout>
