@@ -40,7 +40,7 @@ public class TLSTestTask extends AsyncTask<Void, Void, Double> {
         }
 
         double time = System.currentTimeMillis();
-        for (int i = 0; i < 1000; i++) {
+        for (int i = 0; i < 10000; i++) {
             Log.d("HTTP Test", i + "");
             try {
                 urlConnection = (HttpsURLConnection) url.openConnection();
