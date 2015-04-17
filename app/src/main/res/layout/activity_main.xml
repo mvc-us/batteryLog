@@ -77,6 +77,34 @@
             android:maxLines="30"
             android:scrollbars="vertical"
             android:textIsSelectable="true"/>
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Run TLS Test"
+            android:id="@+id/button2"
+            android:onClick="onButtonClicked" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="?android:attr/textAppearanceLarge"
+            android:id="@+id/textView4"
+            android:text="TLS Test Result" />
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Run HTTP Test"
+            android:id="@+id/button3"
+            android:onClick="onButtonClicked" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="?android:attr/textAppearanceLarge"
+            android:id="@+id/textView5"
+            android:text="HTTP Test Result" />
     </LinearLayout>
 
 </RelativeLayout>
