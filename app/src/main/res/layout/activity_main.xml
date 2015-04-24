@@ -36,6 +36,13 @@
         <Button
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:text="Start Web Simulation"
+            android:id="@+id/button2"
+            android:onClick="startWebSimulation"/>
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:text="Refresh Battery"
             android:id="@+id/button"
             android:layout_marginLeft="30dp"

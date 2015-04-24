@@ -9,8 +9,13 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.BatteryManager;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
@@ -25,11 +30,21 @@ import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -46,7 +61,12 @@ public class MainActivity extends ActionBarActivity {
     private boolean writeToLog = false;
     public static final String ALERT_TITLE = "Identifier in Log";
     public static final String LOG_DIVIDER = ">>>>>>>>>>";
-    public static final String ALERT_MESSAGE = "Used to divide between logs in file";
+    public static final String LOG_END_DIVIDER = "<<<<<<<<<<";
+    public static final String ALERT_MESSAGE = "Used to delineate between logs in file";
+    public static final String EXTERN_SITES_FILE = "sites.txt";
+    public static final String LOG_TAG_KEY = "logKey";
+
+    private static final String HANDLER_THREAD = "battery_handler_thread";
 
     private BroadcastReceiver mbcr = new BroadcastReceiver()
     {
@@ -57,6 +77,13 @@ public class MainActivity extends ActionBarActivity {
             //after getting update from broadcast receiver
             //it will change and give battery status
             int level = i.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+
+            //These calls will only work with certain devices
+            // See source.android.com/devices/tech/power/index.html#nexus-devices
+            BatteryManager b = new BatteryManager();
+            long energy = b.getLongProperty(BatteryManager.BATTERY_PROPERTY_ENERGY_COUNTER);
+            int percent = b.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
+
             Date d = new Date();
             long time = d.getTime();
             MainActivity.this.updateBatteryLevel(level);
@@ -89,7 +116,12 @@ public class MainActivity extends ActionBarActivity {
             Map<String, ?> m =  sharedPref.getAll();
             Log.d("BroadcastReceiver", m.get(getString(R.string.prev_battery_key)).toString());
 
-            MainActivity.this.updateBatteryScreen();
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    MainActivity.this.updateBatteryScreen();
+                }
+            });
         }
     };
 
@@ -99,7 +131,15 @@ public class MainActivity extends ActionBarActivity {
         setContentView(R.layout.activity_main);
         IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
 //        Intent batteryStatus = getApplicationContext().registerReceiver(null, ifilter);
-        registerReceiver(mbcr, ifilter);
+
+        //create new handler to handle battery changes
+        HandlerThread handlerThread = new HandlerThread(HANDLER_THREAD);
+        handlerThread.start();
+        Looper looper = handlerThread.getLooper();
+        Handler handler = new Handler(looper);
+        registerReceiver(mbcr, ifilter, null, handler);
+//        registerReceiver(mbcr, ifilter);
+
         TextView t = (TextView)findViewById(R.id.textViewHist);
         t.setMovementMethod(new ScrollingMovementMethod());
         file = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), EXTERN_FILE_NAME);
@@ -257,6 +297,12 @@ public class MainActivity extends ActionBarActivity {
                         Editable value = input.getText();
                         MainActivity.this.appendStorage(MainActivity.LOG_DIVIDER + " " + value.toString());
                         writeToLog = true;
+                        SharedPreferences sharedPref = MainActivity.this.getSharedPreferences(
+                                getString(R.string.preference_file_key), Context.MODE_PRIVATE);
+                        SharedPreferences.Editor e = sharedPref.edit();
+                        e.putString(LOG_TAG_KEY, value.toString());
+                        e.apply();
+                        e.commit();
                     }
                 }).setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
             public void onClick(DialogInterface dialog, int whichButton) {
@@ -266,7 +312,6 @@ public class MainActivity extends ActionBarActivity {
     }
 
     public void onButtonClicked(View view) {
-        Log.d("Button", "Clicked");
         switch(view.getId()) {
             case R.id.button:
                 updateBatteryScreen();
@@ -284,4 +329,69 @@ public class MainActivity extends ActionBarActivity {
             Log.d("File IO", "failed to append to log file");
         }
     }
+
+    public void startWebSimulation(View v) {
+
+//        startService(new Intent(this, BatteryTester.class));
+
+        final EditText input = new EditText(this);
+        new AlertDialog.Builder(MainActivity.this)
+                .setTitle(ALERT_TITLE)
+                .setMessage(ALERT_MESSAGE)
+                .setView(input)
+                .setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        Editable value = input.getText();
+                        MainActivity.this.appendStorage(MainActivity.LOG_DIVIDER + " " + value.toString());
+                        writeToLog = true;
+                        SharedPreferences sharedPref = MainActivity.this.getSharedPreferences(
+                                getString(R.string.preference_file_key), Context.MODE_PRIVATE);
+                        SharedPreferences.Editor e = sharedPref.edit();
+                        e.putString(LOG_TAG_KEY, value.toString());
+                        e.apply();
+                        e.commit();
+
+                        BackgroundTask task = new BackgroundTask();
+                        String tag = sharedPref.getString(LOG_TAG_KEY, LOG_TAG_KEY);
+                        task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, tag);
+                    }
+                }).setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int whichButton) {
+                // Nothing
+            }
+        }).show();
+    }
+
+    private class BackgroundTask extends AsyncTask<String, Void, Boolean> {
+        @Override
+        protected Boolean doInBackground(String...flags) {
+            // Note: Replace the below with the battery testing task you want to run
+            for (int j=0; j < 20; j++) {
+                try {
+                    File f = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), EXTERN_SITES_FILE);
+                    StringBuilder text = new StringBuilder();
+                    BufferedReader br = new BufferedReader(new FileReader(f));
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(line));
+                        startActivity(i);
+                        Thread.sleep(20000);
+                    }
+                } catch (Exception e) {
+                    Log.d("BackGroundTask", "Website Load Failed");
+                    return false;
+                }
+            }
+
+            if (flags.length > 0) {
+                MainActivity.this.appendStorage(MainActivity.LOG_END_DIVIDER + flags[0]);
+            }
+            return true;
+        }
+        // onPostExecute displays the results of the AsyncTask.
+        protected void onPostExecute(String result) {
+        }
+    }
+
+
 }
