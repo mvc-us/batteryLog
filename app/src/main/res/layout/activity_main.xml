@@ -31,7 +31,8 @@
             android:layout_height="wrap_content"
             android:text="@string/checkbox_battery_log"
             android:id="@+id/checkbox_battery"
-            android:onClick="onCheckboxClicked" />
+            android:onClick="onCheckboxClicked"
+            android:visibility="invisible" />
 
         <Button
             android:layout_width="wrap_content"

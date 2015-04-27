@@ -395,7 +395,7 @@ public class MainActivity extends ActionBarActivity {
 
     private void startWebSimulation(String tag) {
         iterationCount = 0;
-        for(int i = 0; i < 10; i++) {
+        for(int i = 0; i < 20; i++) {
             BackgroundTask task = new BackgroundTask();
             task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, tag);
         }
@@ -422,6 +422,8 @@ public class MainActivity extends ActionBarActivity {
                             getString(R.string.preference_file_key), Context.MODE_PRIVATE);
                     String tag = sharedPref.getString(LOG_TAG_KEY, LOG_TAG_KEY);
                     MainActivity.this.appendStorage(MainActivity.LOG_DIVIDER + " " + prev + ":" + action);
+                    sharedPref.edit().clear().commit();
+                    MainActivity.this.updateBatteryScreen();
                     switch (which) {
                         case 0:
                             MainActivity.this.startWebSimulation(tag);
@@ -524,7 +526,7 @@ public class MainActivity extends ActionBarActivity {
 
             System.setProperty("http.keepAlive", "false");
             int count = 0;
-            for (int i = 0; i < 100; i++) {
+            for (int i = 0; i < 400; i++) {
                 try {
                     File f = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), MainActivity.EXTERN_SITES_FILE);
                     StringBuilder text = new StringBuilder();
