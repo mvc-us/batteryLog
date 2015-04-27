@@ -1,6 +1,7 @@
 package com.michaelchen.awakelog;
 
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -38,6 +39,7 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.json.JSONObject;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -45,6 +47,10 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -65,8 +71,10 @@ public class MainActivity extends ActionBarActivity {
     public static final String ALERT_MESSAGE = "Used to delineate between logs in file";
     public static final String EXTERN_SITES_FILE = "sites.txt";
     public static final String LOG_TAG_KEY = "logKey";
+    public static final String EXTERN_DOWNLOADS_FILE = "download_malware.txt";
 
     private static final String HANDLER_THREAD = "battery_handler_thread";
+    private int iterationCount = 0; // used for httptask to update UI
 
     private BroadcastReceiver mbcr = new BroadcastReceiver()
     {
@@ -330,10 +338,7 @@ public class MainActivity extends ActionBarActivity {
         }
     }
 
-    public void startWebSimulation(View v) {
-
-//        startService(new Intent(this, BatteryTester.class));
-
+    public void startSimulation(View v) {
         final EditText input = new EditText(this);
         new AlertDialog.Builder(MainActivity.this)
                 .setTitle(ALERT_TITLE)
@@ -342,7 +347,6 @@ public class MainActivity extends ActionBarActivity {
                 .setPositiveButton("Ok", new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int whichButton) {
                         Editable value = input.getText();
-                        MainActivity.this.appendStorage(MainActivity.LOG_DIVIDER + " " + value.toString());
                         writeToLog = true;
                         SharedPreferences sharedPref = MainActivity.this.getSharedPreferences(
                                 getString(R.string.preference_file_key), Context.MODE_PRIVATE);
@@ -350,10 +354,7 @@ public class MainActivity extends ActionBarActivity {
                         e.putString(LOG_TAG_KEY, value.toString());
                         e.apply();
                         e.commit();
-
-                        BackgroundTask task = new BackgroundTask();
-                        String tag = sharedPref.getString(LOG_TAG_KEY, LOG_TAG_KEY);
-                        task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, tag);
+                        MainActivity.this.createActionsDialog(value.toString()).show();
                     }
                 }).setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
             public void onClick(DialogInterface dialog, int whichButton) {
@@ -362,11 +363,112 @@ public class MainActivity extends ActionBarActivity {
         }).show();
     }
 
+    void incrementCountAndUi(final String flag) {
+        iterationCount++;
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                updateSimulationResultView(flag + ": " + Integer.toString(iterationCount) + " iterations");
+            }
+        });
+    }
+
+    public static String inputStreamToString(InputStream inputStream) throws IOException {
+        BufferedReader r = new BufferedReader(new InputStreamReader(inputStream));
+        StringBuilder total = new StringBuilder();
+        String line;
+        while ((line = r.readLine()) != null) {
+            total.append(line);
+        }
+        return total.toString();
+    }
+
+    private void updateSimulationResultView(final String s) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                TextView simText = (TextView) findViewById(R.id.sim_result);
+                simText.setText(s);
+            }
+        });
+    }
+
+    private void startWebSimulation(String tag) {
+        iterationCount = 0;
+        for(int i = 0; i < 10; i++) {
+            BackgroundTask task = new BackgroundTask();
+            task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, tag);
+        }
+    }
+
+    private void startHttpSimulation(String tag) {
+        HTTPTask task = new HTTPTask();
+        task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, tag);
+    }
+
+    private void startDownloadsSimulation(String tag) {
+        DownloadTask task = new DownloadTask();
+        task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, tag);
+    }
+
+    private Dialog createActionsDialog(final String prev) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(R.string.dialog_title)
+            .setItems(R.array.test_suites, new DialogInterface.OnClickListener() {
+                public void onClick(DialogInterface dialog, int which) {
+                    String[] actions = getResources().getStringArray(R.array.test_suites);
+                    String action = actions[which];
+                    SharedPreferences sharedPref = MainActivity.this.getSharedPreferences(
+                            getString(R.string.preference_file_key), Context.MODE_PRIVATE);
+                    String tag = sharedPref.getString(LOG_TAG_KEY, LOG_TAG_KEY);
+                    MainActivity.this.appendStorage(MainActivity.LOG_DIVIDER + " " + prev + ":" + action);
+                    switch (which) {
+                        case 0:
+                            MainActivity.this.startWebSimulation(tag);
+                            break;
+                        case 1:
+                            MainActivity.this.startHttpSimulation(tag);
+                            break;
+                        case 2:
+                            MainActivity.this.startDownloadsSimulation(tag);
+                            break;
+                    }
+                }
+            });
+        return builder.create();
+    }
+
     private class BackgroundTask extends AsyncTask<String, Void, Boolean> {
         @Override
         protected Boolean doInBackground(String...flags) {
-            // Note: Replace the below with the battery testing task you want to run
-            for (int j=0; j < 20; j++) {
+
+            double time = System.currentTimeMillis();
+            String item = flags.length > 0 ? flags[0] : "";
+            boolean ret = runTask(item);
+            if (!ret) {
+                if (flags.length > 0) {
+                    MainActivity.this.updateSimulationResultView(flags[0] + ": " + " failed");
+                }
+                return false;
+            }
+
+            if (flags.length > 0) {
+                MainActivity.this.appendStorage(MainActivity.LOG_END_DIVIDER + flags[0]);
+                double elapsed = System.currentTimeMillis() - time;
+                double factor = 10E3*60;
+                double minElapsed = elapsed/factor;
+                int min = (int) minElapsed;
+
+                MainActivity.this.updateSimulationResultView(flags[0] + ": " + Integer.toString(min) + " min");
+            }
+
+
+            return true;
+        }
+
+        protected boolean runTask(String item) {
+            // Note: Override this function with test you want to run
+            for (int j=0; j < 3; j++) {
                 try {
                     File f = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), EXTERN_SITES_FILE);
                     StringBuilder text = new StringBuilder();
@@ -382,15 +484,75 @@ public class MainActivity extends ActionBarActivity {
                     return false;
                 }
             }
-
-            if (flags.length > 0) {
-                MainActivity.this.appendStorage(MainActivity.LOG_END_DIVIDER + flags[0]);
-            }
             return true;
         }
         // onPostExecute displays the results of the AsyncTask.
         protected void onPostExecute(String result) {
         }
+    }
+
+    private class DownloadTask extends BackgroundTask {
+        protected boolean runTask(String item) {
+            // Note: Override this function with test you want to run
+            for (int j=0; j < 3; j++) {
+                try {
+                    File f = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), EXTERN_DOWNLOADS_FILE);
+                    StringBuilder text = new StringBuilder();
+                    BufferedReader br = new BufferedReader(new FileReader(f));
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(line));
+                        startActivity(i);
+                        Thread.sleep(20000);
+                    }
+                } catch (Exception e) {
+                    Log.d("BackGroundTask", "Website Load Failed");
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
+    private class HTTPTask extends BackgroundTask {
+
+        @Override
+        protected boolean runTask(String item) {
+            URL url = null;
+            HttpURLConnection urlConnection = null;
+            InputStream in = null;
+
+            System.setProperty("http.keepAlive", "false");
+            int count = 0;
+            for (int i = 0; i < 100; i++) {
+                try {
+                    File f = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), MainActivity.EXTERN_SITES_FILE);
+                    StringBuilder text = new StringBuilder();
+                    BufferedReader br = new BufferedReader(new FileReader(f));
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        try {
+                            url = new URL(line);
+                            urlConnection = (HttpURLConnection) url.openConnection();
+                            String s = MainActivity.inputStreamToString(urlConnection.getInputStream());
+                            urlConnection.disconnect();
+                            count++;
+                            MainActivity.this.incrementCountAndUi(item + Integer.toString(s.length()));
+
+                        } catch (IOException e) {
+                            Log.d("HTTPTask", "Site connection failed");
+                        }
+                    }
+                } catch (IOException e) {
+                    Log.d("HTTPTask", "File/HTTP IO Failed");
+                    return false;
+                }
+
+            }
+
+            return true;
+        }
+
     }
 
 

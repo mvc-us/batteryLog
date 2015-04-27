@@ -36,9 +36,16 @@
         <Button
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Start Web Simulation"
+            android:text="Start Simulation"
             android:id="@+id/button2"
-            android:onClick="startWebSimulation"/>
+            android:onClick="startSimulation"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Simulation Result:"
+            android:id="@+id/sim_result"
+            android:layout_gravity="center_horizontal" />
 
         <Button
             android:layout_width="wrap_content"

@@ -15,7 +15,7 @@ def parse(f):
             records[current_record] = record_table
         elif line.startswith("<<<<<<<<<<"):
             current_record = None
-            record_table = {}
+            record_table = []
         else:
             args = line.split(',')
             if len(args) == 3:
@@ -28,6 +28,16 @@ def refactor_time(times):
     baseline = float(min(times))
     factor = 3600*10.0E3 #convert to hours
     return [float(elem - baseline)/factor for elem in times]
+
+def drain_rate(record):
+    x_values = []
+    y_values = []
+    for elem in record:
+        x_values.append(elem[0])
+        y_values.append(elem[1])
+    x_min, x_max = min(x_values), max(x_values)
+    y_min, y_max = min(y_values), max(y_values)
+    return float(y_max - y_min)/float(x_max - x_min)
 
 
 def plot(record, title='Title'):
@@ -46,12 +56,7 @@ def plot(record, title='Title'):
     plt.title(title)
     plt.show()
 
-if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        print "Usage: python parser.py <log_file>"
-        sys.exit(-1)
-    f = open(sys.argv[1])
-    result = parse(f)
+def plot_all(result):
     jobs = {x for x in result.keys() if len(result[x]) > 0}
     threads = [Process(target = plot, args=(result[job], job)) for job in jobs]
     for t in threads:
@@ -59,4 +64,10 @@ if __name__ == '__main__':
     for t in threads:
         t.join()
 
-
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        print "Usage: python parser.py <log_file>"
+        sys.exit(-1)
+    f = open(sys.argv[1])
+    result = parse(f)
+    drain_rates = {x: drain_rate(result[x]) for x in result.keys() if len(result[x]) > 1}

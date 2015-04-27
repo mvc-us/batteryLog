@@ -12,5 +12,11 @@
     <string name="prev_datetime_key">PrevTime</string>
     <string name="prev_battery_key">PrevBattery</string>
     <string name="time_log_key">TimeLog</string>
+    <string name="dialog_title">Select Test Suite</string>
+    <string-array name="test_suites">
+        <item>Web Pages</item>
+        <item>http Connections</item>
+        <item>Downloads</item>
+    </string-array>
 
 </resources>

@@ -2,3 +2,6 @@ Logs power usage, and can keep CPU running in order to do so
 Creates a log in the Downloads directory called powerUsage.log
 File is formatted with '>>>>>>>>>>' and a user-input token as delimeters
 Lines are in the format DateTime,DateAsLong,BatteryPercent
+
+to run a website task or download task, copy the appropriate txt into the Downloads directory
+use adb push <file> /storage/sdcard0/Download/
