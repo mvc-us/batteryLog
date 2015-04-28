@@ -457,10 +457,8 @@ public class MainActivity extends ActionBarActivity {
             if (flags.length > 0) {
                 MainActivity.this.appendStorage(MainActivity.LOG_END_DIVIDER + flags[0]);
                 double elapsed = System.currentTimeMillis() - time;
-                double factor = 10E3*60;
-                double minElapsed = elapsed/factor;
+                double minElapsed = elapsed*1.66667e-5;
                 int min = (int) minElapsed;
-
                 MainActivity.this.updateSimulationResultView(flags[0] + ": " + Integer.toString(min) + " min");
             }
 
