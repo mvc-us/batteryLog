@@ -1,7 +1,8 @@
 #!/usr/bin/python
 import sys
-import matplotlib.pyplot as plt
 from multiprocessing import Process
+import numpy as np
+from scipy import stats
 
 VALID_STR = 'VALID:'
 
@@ -22,7 +23,7 @@ def parse(f):
             record_table = []
         else:
             args = line.split(',')
-            if len(args) == 3:
+            if len(args) >= 3:
                 level = int(args[2])
                 time = long(args[1])
                 record_table.append((time, level))
@@ -45,16 +46,22 @@ def drain_rate(record):
 
 def execution_time(record):
     x_values = []
-    y_values = []
     for elem in record:
         x_values.append(elem[0])
-        y_values.append(elem[1])
 
     x_values = refactor_time(x_values)
     return max(x_values)
 
+def energy_use(record):
+    y_values = []
+    for elem in record:
+        y_values.append(elem[1])
+
+    return max(y_values) - min(y_values)
+
 
 def plot(record, title='Title'):
+    import matplotlib.pyplot as plt
     x_values = []
     y_values = []
     for elem in record:
@@ -65,9 +72,19 @@ def plot(record, title='Title'):
     x_min, x_max = min(x_values), max(x_values)
     y_min, y_max = min(y_values), max(y_values)
 
-    plt.plot(x_values, y_values, 'b-')
+    x = np.array(x_values)
+    y = np.array(y_values)
+
+    slope, intercept, r_value, p_value, std_err = stats.linregress(x,y)
+
+    print "r-squared:", r_value**2
+
+    plt.plot(x_values, y_values, 'bo', label='Original data')
     plt.axis([x_min, x_max, y_min, y_max])
+    plt.xlabel('Time (Hours)')
+    plt.ylabel('% Battery')
     plt.title(title)
+    plt.legend()
     plt.show()
 
 def plot_all(result):
@@ -86,10 +103,15 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         print "Usage: python parser.py <log_file>"
         sys.exit(-1)
-    f = open(sys.argv[1])
-    result = parse(f)
+
+    result = {}
+    for file_name in sys.argv[1:]:
+        f = open(file_name)
+        file_result = parse(f)
+        result.update(file_result)
     drain_rates = {x: drain_rate(result[x]) for x in result.keys() if len(result[x]) > 1}
     times = {x: execution_time(result[x]) for x in result.keys() if len(result[x]) > 1}
+    energy = {x: energy_use(result[x]) for x in result.keys() if len(result[x]) > 1}
 
-    drain_rates_valid = {x: drain_rate(result[x]) for x in get_valid_record_keys(result) if len(result[x]) > 1}
-    times_valid = {x: execution_time(result[x]) for x in get_valid_record_keys(result) if len(result[x]) > 1}
+    _drain_rates_valid = {x: drain_rate(result[x]) for x in get_valid_record_keys(result) if len(result[x]) > 1}
+    _times_valid = {x: execution_time(result[x]) for x in get_valid_record_keys(result) if len(result[x]) > 1}
