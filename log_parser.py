@@ -6,6 +6,8 @@ from scipy import stats
 
 VALID_STR = 'VALID:'
 
+#plot(result['VALID:baseline:none'], title="Idle Power Drain", interp=True)
+
 def parse(f):
     records = {} #[label] = record_table
     record_table = []
@@ -23,10 +25,15 @@ def parse(f):
             record_table = []
         else:
             args = line.split(',')
-            if len(args) >= 3:
+            if len(args) == 3:
                 level = int(args[2])
                 time = long(args[1])
                 record_table.append((time, level))
+            elif len(args) == 4:
+                precise_level = int(args[3])
+                level = int(args[2])
+                time = long(args[1])
+                record_table.append((time, level, precise_level))
     return records
 
 def refactor_time(times):
@@ -59,14 +66,31 @@ def energy_use(record):
 
     return max(y_values) - min(y_values)
 
+def rescale_values(values, new_max, new_min):
+    ret = []
+    old_max, old_min = max(values), min(values)
+    scale = float(new_max)/float(old_max)
+    for v in values:
+        new_value = scale*(v - old_min) + new_min
+        ret.append(new_value)
+    return ret
 
-def plot(record, title='Title'):
+def rescale_n9_value(values):
+    ret = []
+    for v in values:
+        ret.append(float(v)/249200796.88)
+    return ret
+
+def plot(record, title='Title', interp=False):
     import matplotlib.pyplot as plt
     x_values = []
     y_values = []
+    precise_values = []
     for elem in record:
         x_values.append(elem[0])
         y_values.append(elem[1])
+        if len(elem) > 2:
+            precise_values.append(elem[2])
 
     x_values = refactor_time(x_values)
     x_min, x_max = min(x_values), max(x_values)
@@ -76,8 +100,16 @@ def plot(record, title='Title'):
     y = np.array(y_values)
 
     slope, intercept, r_value, p_value, std_err = stats.linregress(x,y)
+    if interp:
+        line = slope*x + intercept
+        plt.plot(x, line, 'r', label='Fitted line')
 
     print "r-squared:", r_value**2
+    if len(precise_values):
+        # mapped_precise = rescale_values(precise_values, max(y_values), min(y_values))
+        mapped_precise = rescale_n9_value(precise_values)
+        print mapped_precise
+        plt.plot(x, mapped_precise, 'gx', label="Precise data")
 
     plt.plot(x_values, y_values, 'bo', label='Original data')
     plt.axis([x_min, x_max, y_min, y_max])
@@ -112,6 +144,7 @@ if __name__ == '__main__':
     drain_rates = {x: drain_rate(result[x]) for x in result.keys() if len(result[x]) > 1}
     times = {x: execution_time(result[x]) for x in result.keys() if len(result[x]) > 1}
     energy = {x: energy_use(result[x]) for x in result.keys() if len(result[x]) > 1}
+    pairs = {x: (times[x], energy[x]) for x in times.keys()}
 
     _drain_rates_valid = {x: drain_rate(result[x]) for x in get_valid_record_keys(result) if len(result[x]) > 1}
     _times_valid = {x: execution_time(result[x]) for x in get_valid_record_keys(result) if len(result[x]) > 1}

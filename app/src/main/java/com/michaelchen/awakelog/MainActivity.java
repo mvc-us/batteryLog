@@ -27,19 +27,15 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.NumberPicker;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.widget.Toast;
 
-import org.apache.http.HttpResponse;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.json.JSONObject;
+import org.w3c.dom.Text;
 
-import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -48,13 +44,19 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.Reader;
+import java.lang.reflect.Constructor;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
+import java.net.SocketTimeoutException;
 import java.net.URL;
+import java.net.URLConnection;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Map;
+
+import javax.net.ssl.HttpsURLConnection;
 
 
 public class MainActivity extends ActionBarActivity {
@@ -75,6 +77,10 @@ public class MainActivity extends ActionBarActivity {
 
     private static final String HANDLER_THREAD = "battery_handler_thread";
     private int iterationCount = 0; // used for httptask to update UI
+    private int numTests = 0;
+    private int numTestsDone = 0;
+    private String currentTag = "";
+    private Class<?> currentTask;
 
     private BroadcastReceiver mbcr = new BroadcastReceiver()
     {
@@ -91,7 +97,7 @@ public class MainActivity extends ActionBarActivity {
             BatteryManager b = new BatteryManager();
             long energy = b.getLongProperty(BatteryManager.BATTERY_PROPERTY_ENERGY_COUNTER);
             int percent = b.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
-
+            Log.d("Percent", ""+percent);
             Date d = new Date();
             long time = d.getTime();
             MainActivity.this.updateBatteryLevel(level);
@@ -108,10 +114,15 @@ public class MainActivity extends ActionBarActivity {
 
             if (level > 0) {
                 e.putLong(getString(R.string.time_log_key) + ":" + Integer.toString(level), time);
-                DateFormat df = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss");
-                String dateAsString = df.format(d);
-                String write = dateAsString + "," + Long.toString(time) + "," + Integer.toString(level);
+
                 if (MainActivity.this.writeToLog) {
+                    DateFormat df = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss");
+                    String dateAsString = df.format(d);
+                    String write = dateAsString + "," + Long.toString(time) + "," + Integer.toString(level);
+                    if (energy != Long.MIN_VALUE) {
+                        // Using device that supports precise energy measurements, see above
+                        write += "," + Long.toString(energy);
+                    }
                     MainActivity.this.appendStorage(write);
                 }
             }
@@ -394,14 +405,63 @@ public class MainActivity extends ActionBarActivity {
     }
 
     private void startWebSimulation(String tag) {
-        iterationCount = 0;
-        for(int i = 0; i < 20; i++) {
-            BackgroundTask task = new BackgroundTask();
-            task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, tag);
-        }
+
+        BackgroundTask task = new BackgroundTask();
+        task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, tag);
     }
 
-    private void startHttpSimulation(String tag) {
+    private void startSimulationWithCount(final String tag, final BackgroundTask task) {
+
+        final NumberPicker numberPicker = new NumberPicker(this);
+        numberPicker.setMaxValue(5);
+        numberPicker.setMinValue(0);
+        new AlertDialog.Builder(MainActivity.this)
+                .setTitle("Number of Tests")
+                .setMessage("Number of times test should be run automatically")
+                .setView(numberPicker)
+                .setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        numTests = numberPicker.getValue();
+                        numTestsDone = 0;
+                        currentTag = tag;
+                        iterationCount = 0;
+                        currentTask = task.getClass();
+                        task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, tag);
+                    }
+                }).setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int whichButton) {
+                // Nothing
+            }
+        }).show();
+
+    }
+
+    void onTaskFinished () {
+        numTestsDone++;
+        MainActivity.this.appendStorage(MainActivity.LOG_DIVIDER + " " + ":" + currentTag);
+        if (numTestsDone < numTests) {
+            try {
+                currentTag += Integer.toString(numTestsDone);
+                Constructor<?> ctor = currentTask.getConstructor(MainActivity.class);
+                BackgroundTask task = (BackgroundTask) ctor.newInstance(MainActivity.this);
+//                BackgroundTask task = new HTTPFixTimeTask();
+                task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, currentTag);
+            } catch (Exception e) {
+                Log.e("Restart task", "failed load task", e);
+            }
+        }
+        final int testsDone = numTestsDone;
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                TextView t = (TextView) findViewById(R.id.textIterations);
+                t.setText(getString(R.string.iterations) + Integer.toString(testsDone));
+            }
+        });
+    }
+
+    private void startHttpTask(String tag) {
+        iterationCount = 0;
         HTTPTask task = new HTTPTask();
         task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, tag);
     }
@@ -429,11 +489,16 @@ public class MainActivity extends ActionBarActivity {
                             MainActivity.this.startWebSimulation(tag);
                             break;
                         case 1:
-                            MainActivity.this.startHttpSimulation(tag);
+                            MainActivity.this.startSimulationWithCount(tag, new HTTPTask());
                             break;
                         case 2:
                             MainActivity.this.startDownloadsSimulation(tag);
                             break;
+                        case 3:
+                            MainActivity.this.startSimulationWithCount(tag, new HTTPFixTimeTask());
+                            break;
+                        case 4:
+                            MainActivity.this.startSimulationWithCount("Https comparison", new HTTPComparisonTask());
                     }
                 }
             });
@@ -441,6 +506,11 @@ public class MainActivity extends ActionBarActivity {
     }
 
     private class BackgroundTask extends AsyncTask<String, Void, Boolean> {
+
+        public BackgroundTask() {
+            super();
+        }
+
         @Override
         protected Boolean doInBackground(String...flags) {
 
@@ -459,7 +529,8 @@ public class MainActivity extends ActionBarActivity {
                 double elapsed = System.currentTimeMillis() - time;
                 double minElapsed = elapsed*1.66667e-5;
                 int min = (int) minElapsed;
-                MainActivity.this.updateSimulationResultView(flags[0] + ": " + Integer.toString(min) + " min");
+                String classString = this.getClass().toString();
+                MainActivity.this.updateSimulationResultView(flags[0] + " " + classString + ": " + Integer.toString(min) + " min");
             }
 
 
@@ -486,8 +557,10 @@ public class MainActivity extends ActionBarActivity {
             }
             return true;
         }
+
         // onPostExecute displays the results of the AsyncTask.
-        protected void onPostExecute(String result) {
+        @Override
+        protected void onPostExecute(Boolean result) {
         }
     }
 
@@ -516,15 +589,21 @@ public class MainActivity extends ActionBarActivity {
 
     private class HTTPTask extends BackgroundTask {
 
+        public HTTPTask() {
+            super();
+        }
+
+        public final int TIMEOUT = 5000;
+        public final int NUM_ITERATIONS = 400;
+//        public final int NUM_ITERATIONS = 1;
         @Override
         protected boolean runTask(String item) {
             URL url = null;
             HttpURLConnection urlConnection = null;
-            InputStream in = null;
 
             System.setProperty("http.keepAlive", "false");
             int count = 0;
-            for (int i = 0; i < 400; i++) {
+            for (int i = 0; i < NUM_ITERATIONS; i++) {
                 try {
                     File f = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), MainActivity.EXTERN_SITES_FILE);
                     StringBuilder text = new StringBuilder();
@@ -534,11 +613,15 @@ public class MainActivity extends ActionBarActivity {
                         try {
                             url = new URL(line);
                             urlConnection = (HttpURLConnection) url.openConnection();
+                            urlConnection.setConnectTimeout(TIMEOUT);
+                            urlConnection.setReadTimeout(TIMEOUT);
                             String s = MainActivity.inputStreamToString(urlConnection.getInputStream());
                             urlConnection.disconnect();
                             count++;
                             MainActivity.this.incrementCountAndUi(item + Integer.toString(s.length()));
 
+                        } catch (SocketTimeoutException e) {
+                            Log.d("HTTPTask", "Site not responding");
                         } catch (IOException e) {
                             Log.d("HTTPTask", "Site connection failed");
                         }
@@ -553,7 +636,165 @@ public class MainActivity extends ActionBarActivity {
             return true;
         }
 
+        @Override
+        protected void onPostExecute(Boolean result) {
+            MainActivity.this.onTaskFinished();
+        }
+
     }
 
+    private class HTTPFixTimeTask extends BackgroundTask {
+
+        public HTTPFixTimeTask() {
+            super();
+        }
+
+        public final int TIMEOUT = 3000;
+        public final int NUM_ITERATIONS = 400;
+        //        public final int NUM_ITERATIONS = 1;
+        @Override
+        protected boolean runTask(String item) {
+            URL url = null;
+            HttpURLConnection urlConnection = null;
+
+            System.setProperty("http.keepAlive", "false");
+            int count = 0;
+            for (int i = 0; i < NUM_ITERATIONS; i++) {
+                try {
+                    File f = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), MainActivity.EXTERN_SITES_FILE);
+                    StringBuilder text = new StringBuilder();
+                    BufferedReader br = new BufferedReader(new FileReader(f));
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        try {
+                            long startTime = System.currentTimeMillis();
+                            url = new URL(line);
+                            urlConnection = (HttpURLConnection) url.openConnection();
+                            urlConnection.setConnectTimeout(TIMEOUT);
+                            urlConnection.setReadTimeout(TIMEOUT);
+                            String s = MainActivity.inputStreamToString(urlConnection.getInputStream());
+                            urlConnection.disconnect();
+                            long endTime = System.currentTimeMillis();
+                            long timeDiff = endTime - startTime;
+                            Log.d("FixTimeTask", "timeDiff: " + timeDiff);
+                            if (timeDiff < TIMEOUT) {
+                                Thread.sleep(TIMEOUT - timeDiff);
+                            }
+                            count++;
+                            MainActivity.this.incrementCountAndUi(item + Integer.toString(s.length()));
+
+                        } catch (SocketTimeoutException e) {
+                            Log.d("HTTPTask", "Site not responding");
+                        } catch (IOException e) {
+                            Log.d("HTTPTask", "Site connection failed");
+                        } catch (InterruptedException e) {
+                            Log.d("HTTPFixTimeTask", "Thread sleep interrupted");
+                        }
+                    }
+                } catch (IOException e) {
+                    Log.d("HTTPTask", "File/HTTP IO Failed");
+                    return false;
+                }
+
+            }
+
+            return true;
+        }
+
+        @Override
+        protected void onPostExecute(Boolean result) {
+            MainActivity.this.onTaskFinished();
+        }
+
+    }
+
+    private class HTTPComparisonTask extends BackgroundTask {
+
+        public HTTPComparisonTask() {
+            super();
+        }
+
+        public static final int ITERTIONS = 1000;
+        double tlsTest(String rest) {
+            URL url = null;
+            HttpsURLConnection urlConnection = null;
+            InputStream in = null;
+
+            System.setProperty("http.keepAlive", "false");
+            try {
+                url = new URL("https://" + rest);
+            }
+            catch (MalformedURLException e) {
+                assert false;
+            }
+
+            double time = System.currentTimeMillis();
+            for (int i = 0; i < ITERTIONS; i++) {
+                try {
+                    urlConnection = (HttpsURLConnection) url.openConnection();
+                    Reader reader = new InputStreamReader(urlConnection.getInputStream());
+                    read(reader);
+                    urlConnection.disconnect();
+                } catch (IOException e) {
+                    assert false;
+                }
+
+            }
+            double elapsed = System.currentTimeMillis() - time;
+            return elapsed;
+        }
+
+        double httpTest(String rest) {
+            URL url = null;
+            HttpURLConnection urlConnection = null;
+            InputStream in = null;
+
+            System.setProperty("http.keepAlive", "false");
+            try {
+                url = new URL("http://" + rest);
+            }
+            catch (MalformedURLException e) {
+                assert false;
+            }
+
+            double time = System.currentTimeMillis();
+            for (int i = 0; i < ITERTIONS; i++) {
+                try {
+                    urlConnection = (HttpURLConnection) url.openConnection();
+                    Reader reader = new InputStreamReader(urlConnection.getInputStream());
+                    read(reader);
+                    urlConnection.disconnect();
+                } catch (IOException e) {
+                    assert false;
+                }
+
+            }
+            double elapsed = System.currentTimeMillis() - time;
+            return elapsed;
+        }
+
+        public void read(Reader reader) {
+            try {
+                while (true) {
+                    int ch = reader.read();
+                    if (ch==-1) {
+                        break;
+                    }
+                    // System.out.print((char)ch);
+                }
+            } catch (IOException e) {
+
+            }
+
+        }
+
+        protected boolean runTask(String item) {
+            String addr = "secure-woodland-5624.herokuapp.com/data?amount=1024";
+            // String addr = "elections.asuc.org";
+            System.out.println("tls: " + tlsTest(addr));
+            System.out.println("http: " + httpTest(addr));
+            return true;
+        }
+    }
 
 }

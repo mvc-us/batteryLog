@@ -17,6 +17,10 @@
         <item>Web Pages</item>
         <item>http Connections</item>
         <item>Downloads</item>
+        <item>Fixed-time http connections</item>
+        <item>Compare http/s</item>
+        <item>Log Only</item>
     </string-array>
+    <string name="iterations">Number of Tests Done</string>
 
 </resources>

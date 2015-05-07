@@ -31,8 +31,7 @@
             android:layout_height="wrap_content"
             android:text="@string/checkbox_battery_log"
             android:id="@+id/checkbox_battery"
-            android:onClick="onCheckboxClicked"
-            android:visibility="invisible" />
+            android:onClick="onCheckboxClicked" />
 
         <Button
             android:layout_width="wrap_content"
@@ -54,7 +53,15 @@
             android:text="Refresh Battery"
             android:id="@+id/button"
             android:layout_marginLeft="30dp"
-            android:onClick="onButtonClicked"/>
+            android:onClick="onButtonClicked"
+            android:visibility="gone" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/iterations"
+            android:id="@+id/textIterations"
+            android:layout_gravity="center_horizontal" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -68,7 +75,8 @@
             android:layout_height="wrap_content"
             android:text="Short Term Battery Info"
             android:id="@+id/textView2"
-            android:layout_marginLeft="30dp" />
+            android:layout_marginLeft="30dp"
+            android:visibility="gone" />
 
         <TextView
             android:layout_width="wrap_content"
