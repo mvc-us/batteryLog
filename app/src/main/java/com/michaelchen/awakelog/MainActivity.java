@@ -269,6 +269,20 @@ public class MainActivity extends ActionBarActivity {
         return super.onOptionsItemSelected(item);
     }
 
+    private void switchWakelock(boolean locked) {
+        if (locked && (pWakeLock == null || !pWakeLock.isHeld())) {
+            PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+            PowerManager.WakeLock wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
+                    "MyWakelockTag");
+            wakeLock.acquire();
+            pWakeLock = wakeLock;
+        } else {
+            if (pWakeLock != null && pWakeLock.isHeld()) {
+                pWakeLock.release();
+            }
+        }
+    }
+
     public void onCheckboxClicked(View view) {
         boolean checked = ((CheckBox) view).isChecked();
         switch(view.getId()) {
@@ -458,6 +472,10 @@ public class MainActivity extends ActionBarActivity {
                 t.setText(getString(R.string.iterations) + Integer.toString(testsDone));
             }
         });
+
+        if (numTestsDone == numTests) {
+            switchWakelock(false);
+        }
     }
 
     private void startHttpTask(String tag) {
@@ -484,6 +502,7 @@ public class MainActivity extends ActionBarActivity {
                     MainActivity.this.appendStorage(MainActivity.LOG_DIVIDER + " " + prev + ":" + action);
                     sharedPref.edit().clear().commit();
                     MainActivity.this.updateBatteryScreen();
+                    switchWakelock(true);
                     switch (which) {
                         case 0:
                             MainActivity.this.startWebSimulation(tag);
@@ -499,6 +518,14 @@ public class MainActivity extends ActionBarActivity {
                             break;
                         case 4:
                             MainActivity.this.startSimulationWithCount("Https comparison", new HTTPComparisonTask());
+                            break;
+                        case 5:
+                            updateBatteryScreen();
+                            startLog();
+                            break;
+                        case 6:
+                            MainActivity.this.startSimulationWithCount(tag, new HTTPKeepAliveTask());
+                            break;
                     }
                 }
             });
@@ -594,7 +621,7 @@ public class MainActivity extends ActionBarActivity {
         }
 
         public final int TIMEOUT = 5000;
-        public final int NUM_ITERATIONS = 400;
+        public final int NUM_ITERATIONS = 35;
 //        public final int NUM_ITERATIONS = 1;
         @Override
         protected boolean runTask(String item) {
@@ -602,7 +629,6 @@ public class MainActivity extends ActionBarActivity {
             HttpURLConnection urlConnection = null;
 
             System.setProperty("http.keepAlive", "false");
-            int count = 0;
             for (int i = 0; i < NUM_ITERATIONS; i++) {
                 try {
                     File f = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), MainActivity.EXTERN_SITES_FILE);
@@ -617,7 +643,60 @@ public class MainActivity extends ActionBarActivity {
                             urlConnection.setReadTimeout(TIMEOUT);
                             String s = MainActivity.inputStreamToString(urlConnection.getInputStream());
                             urlConnection.disconnect();
-                            count++;
+                            MainActivity.this.incrementCountAndUi(item + Integer.toString(s.length()));
+
+                        } catch (SocketTimeoutException e) {
+                            Log.d("HTTPTask", "Site not responding");
+                        } catch (IOException e) {
+                            Log.d("HTTPTask", "Site connection failed");
+                        }
+                    }
+                } catch (IOException e) {
+                    Log.d("HTTPTask", "File/HTTP IO Failed");
+                    return false;
+                }
+
+            }
+
+            return true;
+        }
+
+        @Override
+        protected void onPostExecute(Boolean result) {
+            MainActivity.this.onTaskFinished();
+        }
+
+    }
+
+    private class HTTPKeepAliveTask extends BackgroundTask {
+
+        public HTTPKeepAliveTask() {
+            super();
+        }
+
+        public final int TIMEOUT = 5000;
+        public final int NUM_ITERATIONS = 35;
+        //        public final int NUM_ITERATIONS = 1;
+        @Override
+        protected boolean runTask(String item) {
+            URL url = null;
+            HttpURLConnection urlConnection = null;
+
+            System.setProperty("http.keepAlive", "true");
+            for (int i = 0; i < NUM_ITERATIONS; i++) {
+                try {
+                    File f = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), MainActivity.EXTERN_SITES_FILE);
+                    StringBuilder text = new StringBuilder();
+                    BufferedReader br = new BufferedReader(new FileReader(f));
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        try {
+                            url = new URL(line);
+                            urlConnection = (HttpURLConnection) url.openConnection();
+                            urlConnection.setConnectTimeout(TIMEOUT);
+                            urlConnection.setReadTimeout(TIMEOUT);
+                            String s = MainActivity.inputStreamToString(urlConnection.getInputStream());
+                            urlConnection.disconnect();
                             MainActivity.this.incrementCountAndUi(item + Integer.toString(s.length()));
 
                         } catch (SocketTimeoutException e) {
@@ -650,8 +729,7 @@ public class MainActivity extends ActionBarActivity {
         }
 
         public final int TIMEOUT = 3000;
-        public final int NUM_ITERATIONS = 400;
-        //        public final int NUM_ITERATIONS = 1;
+        public final int NUM_ITERATIONS = 35;
         @Override
         protected boolean runTask(String item) {
             URL url = null;

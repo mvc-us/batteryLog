@@ -20,6 +20,7 @@
         <item>Fixed-time http connections</item>
         <item>Compare http/s</item>
         <item>Log Only</item>
+        <item>http keep-alive connections</item>
     </string-array>
     <string name="iterations">Number of Tests Done</string>
 
