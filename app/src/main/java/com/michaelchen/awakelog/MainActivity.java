@@ -11,6 +11,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.net.Uri;
+import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
 import android.os.BatteryManager;
 import android.os.Environment;
@@ -55,6 +56,11 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import javax.net.ssl.HttpsURLConnection;
 
@@ -81,6 +87,8 @@ public class MainActivity extends ActionBarActivity {
     private int numTestsDone = 0;
     private String currentTag = "";
     private Class<?> currentTask;
+    private int counter = 0; // hack for fix time task
+    private WifiManager.WifiLock wifiLock;
 
     private BroadcastReceiver mbcr = new BroadcastReceiver()
     {
@@ -281,6 +289,16 @@ public class MainActivity extends ActionBarActivity {
                 pWakeLock.release();
             }
         }
+
+        if (locked && (wifiLock == null || !wifiLock.isHeld())) {
+            wifiLock = ((WifiManager) getSystemService(Context.WIFI_SERVICE)).createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+                    "wakelock wifilock");
+            wifiLock.acquire();
+        } else {
+            if (wifiLock != null && wifiLock.isHeld()) {
+                wifiLock.release();
+            }
+        }
     }
 
     public void onCheckboxClicked(View view) {
@@ -294,15 +312,7 @@ public class MainActivity extends ActionBarActivity {
                 break;
 
             case R.id.checkbox_wakelock:
-                if (checked) {
-                    PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
-                    PowerManager.WakeLock wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
-                            "MyWakelockTag");
-                    wakeLock.acquire();
-                    pWakeLock = wakeLock;
-                } else {
-                    pWakeLock.release();
-                }
+                switchWakelock(checked);
                 break;
 
             case R.id.checkbox_battery:
@@ -514,8 +524,10 @@ public class MainActivity extends ActionBarActivity {
                             MainActivity.this.startDownloadsSimulation(tag);
                             break;
                         case 3:
-                            MainActivity.this.startSimulationWithCount(tag, new HTTPFixTimeTask());
+//                            MainActivity.this.startSimulationWithCount(tag, new HTTPFixTimeTask());
+                            MainActivity.this.startFixTimeSimulation(tag);
                             break;
+
                         case 4:
                             MainActivity.this.startSimulationWithCount("Https comparison", new HTTPComparisonTask());
                             break;
@@ -530,6 +542,69 @@ public class MainActivity extends ActionBarActivity {
                 }
             });
         return builder.create();
+    }
+
+    private String currentLine;
+    private void startFixTimeSimulation(String tag) {
+        numTests = 1;
+        numTestsDone = 0;
+        currentTag = tag;
+        iterationCount = 0;
+        counter = 0;
+        final int ITERATIONS = 35;
+        try {
+            File f = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), MainActivity.EXTERN_SITES_FILE);
+            StringBuilder text = new StringBuilder();
+            final BufferedReader br = new BufferedReader(new FileReader(f));
+            final Timer timer = new Timer();
+
+            ScheduledExecutorService scheduler =
+                    Executors.newSingleThreadScheduledExecutor();
+            scheduler.scheduleAtFixedRate(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        String line;
+                        HTTPSingleFixTimeTask task = new HTTPSingleFixTimeTask();
+                        if (counter < ITERATIONS && counter != 0) {
+                            line = currentLine;
+                            counter++;
+                        } else {
+                            counter = 1;
+                            line = br.readLine();
+                            currentLine = line;
+                            if (line == null) {
+                                MainActivity.this.onTaskFinished();
+                                timer.cancel();
+                                timer.purge();
+                            }
+                        }
+
+
+                        task.execute(line);
+                        task.get(3000, TimeUnit.MILLISECONDS);
+                    } catch (IOException e) {
+                        Log.e("TimerTask", "failed run", e);
+                    } catch (Exception e) {
+                        Log.e("TimerTask", "failed run", e);
+                    }
+                }
+            }, 0, 3000, TimeUnit.MILLISECONDS);
+
+
+//            final TimerTask asyncTask = new TimerTask() {
+//                @Override
+//                public void run() {
+//
+//
+//                }
+//            };
+//            timer.schedule(asyncTask, 0, 3000);
+        } catch (IOException e) {
+            Log.e("Fix count http", "failed read log file", e);
+            return;
+        }
+
     }
 
     private class BackgroundTask extends AsyncTask<String, Void, Boolean> {
@@ -621,7 +696,7 @@ public class MainActivity extends ActionBarActivity {
         }
 
         public final int TIMEOUT = 5000;
-        public final int NUM_ITERATIONS = 35;
+        public final int NUM_ITERATIONS = 400;
 //        public final int NUM_ITERATIONS = 1;
         @Override
         protected boolean runTask(String item) {
@@ -722,68 +797,43 @@ public class MainActivity extends ActionBarActivity {
 
     }
 
-    private class HTTPFixTimeTask extends BackgroundTask {
+    private class HTTPSingleFixTimeTask extends AsyncTask<String, Void, Boolean> {
 
-        public HTTPFixTimeTask() {
+        public HTTPSingleFixTimeTask() {
             super();
         }
 
-        public final int TIMEOUT = 3000;
-        public final int NUM_ITERATIONS = 35;
+        public static final int TIMEOUT = 3000;
         @Override
-        protected boolean runTask(String item) {
+        protected Boolean doInBackground(String... items) {
             URL url = null;
             HttpURLConnection urlConnection = null;
 
             System.setProperty("http.keepAlive", "false");
-            int count = 0;
-            for (int i = 0; i < NUM_ITERATIONS; i++) {
+            for (String line : items) {
                 try {
-                    File f = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), MainActivity.EXTERN_SITES_FILE);
-                    StringBuilder text = new StringBuilder();
-                    BufferedReader br = new BufferedReader(new FileReader(f));
-                    String line;
-                    while ((line = br.readLine()) != null) {
-                        try {
-                            long startTime = System.currentTimeMillis();
-                            url = new URL(line);
-                            urlConnection = (HttpURLConnection) url.openConnection();
-                            urlConnection.setConnectTimeout(TIMEOUT);
-                            urlConnection.setReadTimeout(TIMEOUT);
-                            String s = MainActivity.inputStreamToString(urlConnection.getInputStream());
-                            urlConnection.disconnect();
-                            long endTime = System.currentTimeMillis();
-                            long timeDiff = endTime - startTime;
-                            Log.d("FixTimeTask", "timeDiff: " + timeDiff);
-                            if (timeDiff < TIMEOUT) {
-                                Thread.sleep(TIMEOUT - timeDiff);
-                            }
-                            count++;
-                            MainActivity.this.incrementCountAndUi(item + Integer.toString(s.length()));
+                    Log.d("HTTPSingleFixTimeTask", "connect to: " + line);
+                    long startTime = System.currentTimeMillis();
+                    url = new URL(line);
+                    urlConnection = (HttpURLConnection) url.openConnection();
+                    urlConnection.setConnectTimeout(TIMEOUT);
+                    urlConnection.setReadTimeout(TIMEOUT);
+                    String s = MainActivity.inputStreamToString(urlConnection.getInputStream());
+                    urlConnection.disconnect();
+                    long endTime = System.currentTimeMillis();
+                    long timeDiff = endTime - startTime;
+                    Log.d("FixTimeTask", "timeDiff: " + timeDiff);
+                    MainActivity.this.incrementCountAndUi(line + Integer.toString(s.length()));
 
-                        } catch (SocketTimeoutException e) {
-                            Log.d("HTTPTask", "Site not responding");
-                        } catch (IOException e) {
-                            Log.d("HTTPTask", "Site connection failed");
-                        } catch (InterruptedException e) {
-                            Log.d("HTTPFixTimeTask", "Thread sleep interrupted");
-                        }
-                    }
+                } catch (SocketTimeoutException e) {
+                    Log.d("HTTPFixTimeTask", "Site not responding");
                 } catch (IOException e) {
-                    Log.d("HTTPTask", "File/HTTP IO Failed");
-                    return false;
+                    Log.d("HTTPFixTimeTask", "Site connection failed");
                 }
-
             }
 
             return true;
         }
-
-        @Override
-        protected void onPostExecute(Boolean result) {
-            MainActivity.this.onTaskFinished();
-        }
-
     }
 
     private class HTTPComparisonTask extends BackgroundTask {

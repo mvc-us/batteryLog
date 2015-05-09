@@ -100,9 +100,6 @@ def plot(record, title='Title', interp=False):
     y = np.array(y_values)
 
     slope, intercept, r_value, p_value, std_err = stats.linregress(x,y)
-    if interp:
-        line = slope*x + intercept
-        plt.plot(x, line, 'r', label='Fitted line')
 
     print "r-squared:", r_value**2
     if len(precise_values):
@@ -112,6 +109,9 @@ def plot(record, title='Title', interp=False):
         plt.plot(x, mapped_precise, 'gx', label="Precise data")
 
     plt.plot(x_values, y_values, 'bo', label='Original data')
+    if interp:
+        line = slope*x + intercept
+        plt.plot(x, line, 'r', label='Fitted line')
     plt.axis([x_min, x_max, y_min, y_max])
     plt.xlabel('Time (Hours)')
     plt.ylabel('% Battery')
